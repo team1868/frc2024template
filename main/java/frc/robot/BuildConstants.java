@@ -15,5 +15,5 @@ public final class BuildConstants {
   public static final long BUILD_UNIX_TIME = 1704531391011L;
   public static final int DIRTY = 0;
 
-  private BuildConstants(){}
+  private BuildConstants() {}
 }
