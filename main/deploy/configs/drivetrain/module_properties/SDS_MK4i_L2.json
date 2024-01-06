@@ -1,0 +1,8 @@
+{
+    "invertDrive": false,
+    "invertSteer": true,
+    "wheelDiameter": {"unit": "inch",
+    "value":3.94},
+    "steerRatio": [[50, 14], [60, 10]],
+    "driveRatio": [[50, 14], [17, 27], [45, 15]]
+}

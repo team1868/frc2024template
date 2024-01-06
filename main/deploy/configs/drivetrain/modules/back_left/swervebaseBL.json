@@ -1,0 +1,21 @@
+{
+    "id": ,
+    "drive": {
+        "type": "falcon",
+        "id": 12,
+        "canbus": "rio"
+    },
+    "steer": {
+        "type": "falcon",
+        "id": 13,
+        "canbus": "rio"
+    },
+    "encoder": {
+        "type": "cancoder",
+        "id": 31,
+        "canbus": "rio"
+    },
+    "absoluteEncoderOffset": 338.2,
+    "halfTrackWidthIn": 10.75,
+    "halfTrackLengthIn": -10.75
+}

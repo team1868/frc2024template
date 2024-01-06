@@ -42,8 +42,11 @@ public class TeleopSwerveCommand extends Command {
         drivetrain,
         controlboard,
         initialMode,
-        Constants.CRobot.drive.control.defaultLimits.maxTranslationalVelocityMPS,
-        Constants.CRobot.drive.control.defaultLimits.maxAngularVelocityPS
+        drivetrain._conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM()
+            .maxVelocity,
+        Rotation2d.fromRadians(drivetrain._conf.swerveConf.drivetrainControl.defaultLimits.angular
+                                   .getLimitsRad()
+                                   .maxVelocity)
     );
   }
 

@@ -9,6 +9,7 @@ public final class RobotAltModes {
 
   /* --- Debug Modes --- */
   public static final boolean isVerboseMode = false;
+  public static final boolean isReplayMode = false; // replaying from a log file
   public static final boolean isLoopTiming = false;
   public static final boolean isAutoTuning = false;
   public static final boolean isPoseTuning = false;
@@ -23,7 +24,7 @@ public final class RobotAltModes {
   public static final boolean isVisionMode = false;
 
   /* --- ODOMETRY CONFIGURATIONS --- */
-  // TODO move
+  // TODO move to constants
   public static final boolean kEnableCouplingCompensation = false;
   public static final boolean kEnableLatencyCompensation = true;
   public static final boolean kEnableThreadedOdometry = true;

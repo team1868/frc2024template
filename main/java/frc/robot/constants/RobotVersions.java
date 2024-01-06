@@ -1,17 +1,13 @@
 package frc.robot.constants;
 
 public enum RobotVersions {
-  COMP_BOT(DrivetrainConfs.COMP_BOT_CONFS
-           // should just be a file path per subsystem
-  ),
-  PRACTICE_BOT(DrivetrainConfs.PRACTICE_BOT_CONFS),
-  SWERVE_BASE(DrivetrainConfs.SWERVE_BASE_CONFS),
-  LEY(DrivetrainConfs.COMP_BOT_CONFS),
-  TEST_BOARD(null);
+  SWERVE_BASE("swervebaseDrive.json");
 
-  public final DrivetrainConfs drive;
+  public final String _drive;
+  public final boolean _hasDrive;
 
-  RobotVersions(DrivetrainConfs drive) {
-    this.drive = drive;
+  RobotVersions(String driveConfFile) {
+    _drive = driveConfFile;
+    _hasDrive = driveConfFile != null;
   }
 }

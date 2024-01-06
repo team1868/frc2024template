@@ -1,0 +1,89 @@
+{
+    "moduleFiles": ["back_left/practicebotBL.json", "back_right/practicebotBR.json", "front_left/practicebotFL.json", "front_right/practicebotFR.json"],
+    "moduleControl":"practicebotModules.json",
+    "dimensions": {
+        "trackWidthIn":  20.75,
+        "trackLengthIn": 20.75,
+        "frameWidthIn": 26.0,
+        "frameLengthIn": 26.0,
+        "bumperSegmentDepthIn": 3.25,
+        "halfFrameWidthIn": 13.0,
+        "halfFrameLengthIn": 13.0,
+        "bumperLengthIn": 32.5,
+        "bumperWidthIn": 32.5 ,
+        "halfBumperLengthIn": 16.25,
+        "halfBumperWidthIn": 16.25
+    },
+    "swerveControl": {
+        "translationalSlewingRate": {
+            "unit": "MPS",
+            "value": 15.0
+        },
+        "angularSlewingRate": {
+            "unit": "DPS",
+            "value": 900.0
+        },
+        "translationalTolerance": {
+            "unit": "In",
+            "value": 0.5
+        },
+        "rotationalTolerance": { 
+            "unit": "Deg",
+            "value": 1.0
+        },
+
+        "defaultLimits": {
+            "translation": { 
+                "unit": "MPS",
+                "velocity": 4.96824,
+                "acceleration": 15.0
+            },
+            "rotation": { 
+                "unit": "DPS",
+                "velocity": 450.0,
+                "acceleration": 900.0
+            }
+        },
+        "defaultTrapezoidalLimits": {
+            "translation": { 
+                "unit": "MPS",
+                "velocity": 4.96824,
+                "acceleration": 3.0
+            },
+            "rotation": {
+                "unit": "DPS",
+                "velocity": 360.0,
+                "acceleration": 360.0
+            }
+        },
+        "translationalControl": { 
+            "p": 3.0,
+            "i": 0.0,
+            "d": 0.0,
+            "f": 0.0
+        },
+        "rotationalControl": {
+            "p": 2.0,
+            "i": 0.0,
+            "d": 0.0,
+            "f": 0.0
+        },
+        "autoTranslationalControl": {
+            "p": 1.85,
+            "i": 0.0,
+            "d": 0.0,
+            "f": 0.0
+        },
+        "autoRotationalControl": {
+            "p": 1.75,
+            "i": 0.0,
+            "d": 0.0,
+            "f": 0.0
+        }
+    },
+    "IMU": {
+        "pigeonCanBus":  "Default Name",
+        "pigeonID": 35
+    }
+}
+

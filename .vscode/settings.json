@@ -30,5 +30,20 @@
   "java.test.defaultConfig": "WPIlibUnitTests",
   "java.format.settings.url": "eclipse-formatter.xml",
   "editor.formatOnSave": true,
-  "editor.defaultFormatter": "xaver.clang-format"
+  "editor.defaultFormatter": "xaver.clang-format",
+  "[groovy]": {
+    "editor.defaultFormatter": "ms-vsliveshare.vsliveshare"
+  },
+  "cSpell.words": [
+    "auton",
+    "canbus",
+    "CANCODER",
+    "compbot",
+    "CONFS",
+    "CTRE",
+    "Odometry",
+    "PIDF",
+    "practicebot",
+    "swervebase"
+  ]
 }

@@ -1,7 +1,5 @@
 package frc.robot.subsystems;
 
-import com.choreo.lib.Choreo;
-import com.choreo.lib.ChoreoTrajectory;
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.StatusSignal;
@@ -9,7 +7,6 @@ import com.ctre.phoenix6.configs.Pigeon2Configuration;
 import com.ctre.phoenix6.hardware.Pigeon2;
 import com.ctre.phoenix6.mechanisms.swerve.SwerveRequest;
 import com.ctre.phoenix6.mechanisms.swerve.SwerveRequest.SwerveControlRequestParameters;
-import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
 import edu.wpi.first.math.filter.LinearFilter;
@@ -20,7 +17,6 @@ import edu.wpi.first.math.kinematics.*;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.GenericEntry;
 import edu.wpi.first.networktables.GenericPublisher;
-import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.Threads;
 import edu.wpi.first.wpilibj.Timer;
@@ -37,36 +33,38 @@ import frc.robot.Ports.DrivetrainPorts;
 import frc.robot.Robot;
 import frc.robot.constants.Constants;
 import frc.robot.constants.Constants.Control;
-import frc.robot.constants.Constants.Sensors;
-import frc.robot.constants.DrivetrainConfs;
 import frc.robot.constants.RobotAltModes;
 import frc.robot.constants.enums.*;
-import frc.robot.utils.AlliancePose2d;
+import frc.robot.parsers.SwerveParser;
+import frc.robot.parsers.json.SwerveDriveControlJson;
+import frc.robot.parsers.json.SwerveDriveJson;
+import frc.robot.parsers.utils.DrivetrainDimensionsJson;
+import frc.robot.utils.GyroIO;
+import frc.robot.utils.GyroIOInputsAutoLogged;
 import frc.robot.utils.InputUtils;
 import frc.robot.utils.LoopTimer;
-import java.util.ArrayList;
-import java.util.Queue;
-import java.util.concurrent.locks.Lock;
+import frc.robot.utils.ModuleIO;
+import frc.robot.utils.PIDFConstants;
 import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 import java.util.function.Consumer;
+import org.littletonrobotics.junction.Logger;
 
 public class Drivetrain extends SubsystemBase {
-  /* --- Constant configuration shortcuts --- */
-  private final DrivetrainConfs DRIVE_CONSTS = Constants.CRobot.drive;
-  private boolean disabled = DRIVE_CONSTS == null;
-  private final DrivetrainDimensions DRIVE_DIMS = disabled ? null : DRIVE_CONSTS.dims;
-  private final DrivetrainControl DRIVE_CONTROL = disabled ? null : DRIVE_CONSTS.control;
-  private final DrivetrainPorts DRIVE_PORTS = disabled ? null : DRIVE_CONSTS.ports;
+  // /* --- Constant configuration shortcuts --- */
+  // private final DrivetrainConfs DRIVE_CONSTS = Constants.CRobot.drive;
+  // private boolean disabled = DRIVE_CONSTS == null;
+  // private final DrivetrainDimensions DRIVE_DIMS = disabled ? null : DRIVE_CONSTS.dims;
+  // private final DrivetrainControl DRIVE_CONTROL = disabled ? null : DRIVE_CONSTS.control;
+  // private final DrivetrainPorts DRIVE_PORTS = disabled ? null : DRIVE_CONSTS.ports;
 
-  public static final Lock odometryLock = new ReentrantLock();
   private boolean wantOrientationMode = false;
   private final boolean USE_POSE_ESTIMATION_ANGLE = false; // change if true?
 
   /* --- Sensors, motors, and hardware --- */
-  private Pigeon2 _gyro = new Pigeon2(DRIVE_PORTS.pigeonID, DRIVE_PORTS.pigeonCanBus);
+  private Pigeon2 _gyro;
+  private final GyroIO _gyroIO;
+  private final GyroIOInputsAutoLogged _gyroInputs = new GyroIOInputsAutoLogged();
   private Pigeon2Configuration _gyroConfigs = new Pigeon2Configuration();
   // private final StatusSignal<Double> _yaw = _gyro.getYaw();
   // private final Queue<Double> _yawPositionQueue;
@@ -84,29 +82,17 @@ public class Drivetrain extends SubsystemBase {
   private double m_thetaVelRef = 0.0;
   private double m_allowedScrub = 0.0;
 
-  private SwerveModule[] _modules = new SwerveModule[] {
-      new SwerveModule(0, DRIVE_PORTS.moduleCanBus),
-      new SwerveModule(1, DRIVE_PORTS.moduleCanBus),
-      new SwerveModule(2, DRIVE_PORTS.moduleCanBus),
-      new SwerveModule(3, DRIVE_PORTS.moduleCanBus)};
+  private SwerveModule[] _modules;
 
   /* --- State and Physical Property variables --- */
   private ChassisSpeeds _chassisSpeeds = new ChassisSpeeds();
   // Initialize with real values regardless of canbus state to ensure good launch to pose
   // estimator
-  private SwerveModulePosition[] _modulePositions = new SwerveModulePosition[] {
-      _modules[0].getPosition(),
-      _modules[1].getPosition(),
-      _modules[2].getPosition(),
-      _modules[3].getPosition()};
+  private SwerveModulePosition[] _modulePositions;
 
   /* --- Odometry Utils --- */
   // TODO: move to configurations
-  private Translation2d[] _swerveModuleLocations = new Translation2d[] {
-      new Translation2d(DRIVE_DIMS.halfTrackLength_M, DRIVE_DIMS.halfTrackWidth_M),
-      new Translation2d(DRIVE_DIMS.halfTrackLength_M, -DRIVE_DIMS.halfTrackWidth_M),
-      new Translation2d(-DRIVE_DIMS.halfTrackLength_M, DRIVE_DIMS.halfTrackWidth_M),
-      new Translation2d(-DRIVE_DIMS.halfTrackLength_M, -DRIVE_DIMS.halfTrackWidth_M)};
+  private Translation2d[] _swerveModuleLocations;
   private edu.wpi.first.math.kinematics.SwerveDriveKinematics _swerveKinematics =
       new edu.wpi.first.math.kinematics.SwerveDriveKinematics(_swerveModuleLocations);
 
@@ -141,33 +127,27 @@ public class Drivetrain extends SubsystemBase {
   protected final StatusSignal<Double> _yawGetter = _gyro.getYaw().clone();
   protected final StatusSignal<Double> _angularZGetter = _gyro.getAngularVelocityZ().clone();
 
-  /* --- Control Utils --- */
-  private ProfiledPIDController _xController = DRIVE_CONTROL.getTranslationaProfiledPIDController();
-  private ProfiledPIDController _yController = DRIVE_CONTROL.getTranslationaProfiledPIDController();
-  private ProfiledPIDController _angleController = DRIVE_CONTROL.getAngularProfiledPIDController();
-
-  private ProfiledPIDController _visionCenterOffsetController =
-      DRIVE_CONTROL.getVisionProfiledPIDController();
-
-  private SlewRateLimiter _xSlewRateFilter =
-      DRIVE_CONTROL.slewingLimits.getTranslationalSlewRateLimiter();
-  private SlewRateLimiter _ySlewRateFilter =
-      DRIVE_CONTROL.slewingLimits.getTranslationalSlewRateLimiter();
-  private SlewRateLimiter _angleSlewRateFilter =
-      DRIVE_CONTROL.slewingLimits.getAngularSlewRateLimiter();
-
   /* --- Game State variables --- */
   private Field2d _field;
   private Alliance _alliance;
   private boolean _isAuto = false;
   private boolean _autoPrepScore = false;
 
+  /* --- Control Utils --- */
+  private ProfiledPIDController _xController;
+  private ProfiledPIDController _yController;
+  private ProfiledPIDController _angleController;
+  private ProfiledPIDController _visionCenterOffsetController;
+  private SlewRateLimiter _xSlewRateFilter;
+  private SlewRateLimiter _ySlewRateFilter;
+  private SlewRateLimiter _angleSlewRateFilter;
+
   /* --- Simulation resources and variables --- */
   private Pose2d _simPose = new Pose2d();
 
   /* --- Logging variables --- */
-  private double[] _desiredSwerveStates = new double[DRIVE_CONSTS.numModules * 2];
-  private double[] _entry = new double[2 * DRIVE_CONSTS.numModules];
+  private double[] _desiredSwerveStates;
+  private double[] _currentSwerveStates;
 
   /* --- Shuffleboard entries --- */
   private SendableChooser<StaticTargets> _staticTargetChooser =
@@ -188,9 +168,48 @@ public class Drivetrain extends SubsystemBase {
   private GenericEntry _steerPFac, _steerIFac, _steerDFac;
 
   private Pose2d TARGET_RELATIVE_POSE = new Pose2d(0.0, 1.0, Rotation2d.fromDegrees(0.0));
+  public SwerveParser _conf;
 
-  public Drivetrain(Field2d field) {
+  private PIDFConstants xy;
+  private PIDFConstants theta;
+
+  public Drivetrain(SwerveParser conf, Field2d field, GyroIO gyroIO) {
     _field = field;
+    _gyroIO = gyroIO;
+    _conf = conf;
+
+    _gyro = conf.swerveConf.IMU.getPigeon2();
+    _modules = conf.getSwerveModules();
+    _modulePositions = new SwerveModulePosition[] {
+        _modules[0].getPosition(),
+        _modules[1].getPosition(),
+        _modules[2].getPosition(),
+        _modules[3].getPosition()};
+    _swerveModuleLocations = conf.getSwerveModuleLocations();
+    _desiredSwerveStates = new double[2 * _conf._numModules];
+    _currentSwerveStates = new double[2 * _conf._numModules];
+
+    xy = conf.swerveConf.drivetrainControl.translationalControl.getPIDFConstants();
+    theta = conf.swerveConf.drivetrainControl.rotationalControl.getPIDFConstants();
+
+    /* --- Control Utils --- */
+    _xController = xy.getProfiledController(
+        _conf.swerveConf.drivetrainControl.defaultTrapezoidalLimits.translation.getLimitsM()
+    );
+    _yController = xy.getProfiledController(
+        _conf.swerveConf.drivetrainControl.defaultTrapezoidalLimits.translation.getLimitsM()
+    );
+    _angleController = theta.getProfiledController(
+        _conf.swerveConf.drivetrainControl.defaultTrapezoidalLimits.angular.getLimitsRad()
+    );
+    // TODO: set limits
+
+    // _visionCenterOffsetController =
+    //     _conf.swerveConf.getVisionProfiledPIDController(getProfileConstraints());
+
+    _xSlewRateFilter = _conf.swerveConf.drivetrainControl.getTranslationalSlewRateLimiter();
+    _ySlewRateFilter = _conf.swerveConf.drivetrainControl.getTranslationalSlewRateLimiter();
+    _angleSlewRateFilter = _conf.swerveConf.drivetrainControl.getAngularSlewRateLimiter();
 
     resetDefaultTolerance();
     _angleController.enableContinuousInput(0.0, Units.degreesToRadians(360.0));
@@ -289,11 +308,15 @@ public class Drivetrain extends SubsystemBase {
       System.out.println(getPose());
     }
 
+    // Logging
+    _gyroIO.updateInputs(_gyroInputs);
+    Logger.processInputs("Drive/Gyro", _gyroInputs);
+
     LoopTimer.markCompletion(" Drivetrain Shuffleboard ", "\n Total Drivetrain ");
   }
 
   public void updateModulePositions() {
-    for (int i = 0; i < DRIVE_CONSTS.numModules; i++) {
+    for (int i = 0; i < _conf._numModules; i++) {
       _modulePositions[i] = _modules[i].getPosition();
     }
   }
@@ -303,19 +326,9 @@ public class Drivetrain extends SubsystemBase {
     return _modulePositions;
   }
 
-  public void enableAuto() {
-    _isAuto = true;
+  public void setAutoMode(boolean enable) {
+    _isAuto = enable;
   }
-
-  public void disableAuto() {
-    _isAuto = false;
-  }
-
-  // public void initGyroConfigs() {
-  //   _gyroConfigs = new Pigeon2Configuration();
-  // }
-
-  // private void configGyro() {}
 
   public void configShuffleboard() {
     ShuffleboardTab tab = Shuffleboard.getTab("SwerveModules");
@@ -342,23 +355,23 @@ public class Drivetrain extends SubsystemBase {
       ShuffleboardLayout anglePIDLayout = drivetrainTab.getLayout("Angle PID", BuiltInLayouts.kGrid)
                                               .withSize(1, 2)
                                               .withPosition(PIDCOL, PIDROW);
-      _anglePFac = anglePIDLayout.add("P", DRIVE_CONTROL.theta.p).withPosition(0, 0).getEntry();
-      _angleIFac = anglePIDLayout.add("I", DRIVE_CONTROL.theta.i).withPosition(0, 1).getEntry();
-      _angleDFac = anglePIDLayout.add("D", DRIVE_CONTROL.theta.d).withPosition(0, 2).getEntry();
+      _anglePFac = anglePIDLayout.add("P", theta.p).withPosition(0, 0).getEntry();
+      _angleIFac = anglePIDLayout.add("I", theta.i).withPosition(0, 1).getEntry();
+      _angleDFac = anglePIDLayout.add("D", theta.d).withPosition(0, 2).getEntry();
 
       ShuffleboardLayout xLayout = drivetrainTab.getLayout("X PID", BuiltInLayouts.kGrid)
                                        .withSize(1, 2)
                                        .withPosition(PIDCOL + 1, PIDROW);
-      _xPFac = xLayout.add("P", DRIVE_CONTROL.xy.p).withPosition(0, 0).getEntry();
-      _xIFac = xLayout.add("I", DRIVE_CONTROL.xy.i).withPosition(0, 1).getEntry();
-      _xDFac = xLayout.add("D", DRIVE_CONTROL.xy.d).withPosition(0, 2).getEntry();
+      _xPFac = xLayout.add("P", xy.p).withPosition(0, 0).getEntry();
+      _xIFac = xLayout.add("I", xy.i).withPosition(0, 1).getEntry();
+      _xDFac = xLayout.add("D", xy.d).withPosition(0, 2).getEntry();
 
       ShuffleboardLayout yLayout = drivetrainTab.getLayout("Y PID", BuiltInLayouts.kGrid)
                                        .withSize(1, 2)
                                        .withPosition(PIDCOL + 2, PIDROW);
-      _yPFac = yLayout.add("P", DRIVE_CONTROL.xy.p).withPosition(0, 0).getEntry();
-      _yIFac = yLayout.add("I", DRIVE_CONTROL.xy.i).withPosition(0, 1).getEntry();
-      _yDFac = yLayout.add("D", DRIVE_CONTROL.xy.d).withPosition(0, 2).getEntry();
+      _yPFac = yLayout.add("P", xy.p).withPosition(0, 0).getEntry();
+      _yIFac = yLayout.add("I", xy.i).withPosition(0, 1).getEntry();
+      _yDFac = yLayout.add("D", xy.d).withPosition(0, 2).getEntry();
     }
 
     ShuffleboardTab controlboardTab = Shuffleboard.getTab("Competition HUD");
@@ -440,12 +453,12 @@ public class Drivetrain extends SubsystemBase {
   }
 
   public double[] swerveMeasuredIO() {
-    for (int i = 0; i < DRIVE_CONSTS.numModules; i++) {
+    for (int i = 0; i < _conf._numModules; i++) {
       SwerveModuleState moduleState = _modules[i].getState();
-      _entry[i * 2] = moduleState.angle.getDegrees();
-      _entry[(i * 2) + 1] = moduleState.speedMetersPerSecond;
+      _currentSwerveStates[i * 2] = moduleState.angle.getDegrees();
+      _currentSwerveStates[(i * 2) + 1] = moduleState.speedMetersPerSecond;
     }
-    return _entry;
+    return _currentSwerveStates;
   }
 
   public double[] swerveSetpointsIO() {
@@ -453,7 +466,7 @@ public class Drivetrain extends SubsystemBase {
   }
 
   public void setDesiredSwerveState(SwerveModuleState[] goalModuleStates) {
-    for (int i = 0; i < DRIVE_CONSTS.numModules; i++) {
+    for (int i = 0; i < _conf._numModules; i++) {
       SwerveModuleState state = goalModuleStates[i];
       _desiredSwerveStates[i * 2] = state.angle.getDegrees();
       _desiredSwerveStates[(i * 2) + 1] = state.speedMetersPerSecond;
@@ -465,7 +478,7 @@ public class Drivetrain extends SubsystemBase {
   }
 
   public boolean areWheelsAligned(SwerveModuleState[] goalStates) {
-    for (int i = 0; i < DRIVE_CONSTS.numModules; i++) {
+    for (int i = 0; i < _conf._numModules; i++) {
       if (!_modules[i].isAlignedTo(goalStates[i]))
         return false;
     }
@@ -473,7 +486,7 @@ public class Drivetrain extends SubsystemBase {
   }
 
   public boolean areWheelsAligned(SwerveModuleState goalState) {
-    for (int i = 0; i < DRIVE_CONSTS.numModules; i++) {
+    for (int i = 0; i < _conf._numModules; i++) {
       if (!_modules[i].isAlignedTo(goalState))
         return false;
     }
@@ -560,7 +573,7 @@ public class Drivetrain extends SubsystemBase {
   public void setModuleStates(SwerveModuleState[] desiredStates, double maxSpeed) {
     // Desaturate based of max theoretical or functional rather than current max
     edu.wpi.first.math.kinematics.SwerveDriveKinematics.desaturateWheelSpeeds(
-        desiredStates, DRIVE_CONSTS.model.theoreticalMaxWheelSpeed
+        desiredStates, _conf._theoreticalMaxWheelSpeedMPS
     );
 
     for (SwerveModule module : _modules) {
@@ -571,7 +584,10 @@ public class Drivetrain extends SubsystemBase {
   }
 
   public void setModuleStates(SwerveModuleState[] desiredStates) {
-    setModuleStates(desiredStates, DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS);
+    setModuleStates(
+        desiredStates,
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM().maxVelocity
+    );
   }
 
   public void drive(
@@ -679,7 +695,7 @@ public class Drivetrain extends SubsystemBase {
         compositeXY,
         joystickTheta,
         mode,
-        DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM().maxVelocity
     );
   }
 
@@ -698,7 +714,9 @@ public class Drivetrain extends SubsystemBase {
         joystickTheta,
         mode,
         maxSpeedMPS,
-        DRIVE_CONTROL.defaultLimits.maxAngularVelocityPS
+        new Rotation2d(
+            _conf.swerveConf.drivetrainControl.defaultLimits.angular.getLimitsRad().maxVelocity
+        )
     );
   }
 
@@ -712,7 +730,7 @@ public class Drivetrain extends SubsystemBase {
 
     // Desaturate based of max theoretical or functional rather than current max
     edu.wpi.first.math.kinematics.SwerveDriveKinematics.desaturateWheelSpeeds(
-        goalModuleStates, DRIVE_CONSTS.model.theoreticalMaxWheelSpeed
+        goalModuleStates, _conf._theoreticalMaxWheelSpeedMPS
     );
 
     for (SwerveModule module : _modules) {
@@ -730,7 +748,7 @@ public class Drivetrain extends SubsystemBase {
         translationXMPS,
         translationYMPS,
         rotationRadPS,
-        DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM().maxVelocity
     );
   }
 
@@ -739,7 +757,7 @@ public class Drivetrain extends SubsystemBase {
         speeds.vxMetersPerSecond,
         speeds.vyMetersPerSecond,
         speeds.omegaRadiansPerSecond,
-        DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM().maxVelocity
     );
   }
 
@@ -751,7 +769,7 @@ public class Drivetrain extends SubsystemBase {
 
   public boolean isOversaturated(SwerveModuleState[] states) {
     for (SwerveModuleState state : states) {
-      if (state.speedMetersPerSecond > DRIVE_CONSTS.model.theoreticalMaxWheelSpeed)
+      if (state.speedMetersPerSecond > _conf._theoreticalMaxWheelSpeedMPS)
         return true;
     }
     return false;
@@ -770,7 +788,7 @@ public class Drivetrain extends SubsystemBase {
 
     // Desaturate based of max theoretical or functional rather than current max
     edu.wpi.first.math.kinematics.SwerveDriveKinematics.desaturateWheelSpeeds(
-        goalModuleStates, DRIVE_CONSTS.model.theoreticalMaxWheelSpeed
+        goalModuleStates, _conf._theoreticalMaxWheelSpeedMPS
     );
 
     for (SwerveModule module : _modules) {
@@ -802,30 +820,31 @@ public class Drivetrain extends SubsystemBase {
     double absScaledY = Math.abs(scaledY);
     double scaledR = robotRelative.omegaRadiansPerSecond * configuredMaxRotationalSpeed;
     double rWheel =
-        scaledR * configuredMaxTranslationalSpeed / DRIVE_CONSTS.theoreticalMaxRotationalSpeed;
+        scaledR * configuredMaxTranslationalSpeed / _conf._theoreticalMaxRotationalSpeedDPS;
     double projected =
         (Math.min(absScaledX, absScaledY) * 2 + Math.abs(absScaledX - absScaledY)) / Math.sqrt(2.0);
 
     // We should rescale
-    if (projected + rWheel > DRIVE_CONSTS.theoreticalMaxTranslationSpeed) {
+    if (projected + rWheel > _conf._theoreticalMaxTranslationSpeedMPS) {
       // // projected oversaturation values (using projected vector value)
       // // no because this is dependent on the direction of translation
       // // which will change with constant input
       // double maxOverSaturation =
       //     (-1 + (configuredMaxRotationalSpeed / DRIVE_CONSTS.theoreticalMaxRotationalSpeed)
-      //      + (configuredMaxTranslationalSpeed / DRIVE_CONSTS.theoreticalMaxTranslationSpeed));
+      //      + (configuredMaxTranslationalSpeed /
+      //      DRIVE_CONSTS.theoreticalMaxTranslationSpeed));
       // double overSaturation =
       //     -1 + (projected + rWheel) / DRIVE_CONSTS.theoreticalMaxTranslationSpeed;
       // double scalingCoefficient = overSaturation / maxOverSaturation;
 
       // unprojected value
-      double scalingCoefficient = -1 + (scaledXY / DRIVE_CONSTS.theoreticalMaxTranslationSpeed)
-          + (scaledR / DRIVE_CONSTS.theoreticalMaxRotationalSpeed);
+      double scalingCoefficient = -1 + (scaledXY / _conf._theoreticalMaxTranslationSpeedMPS)
+          + (scaledR / _conf._theoreticalMaxRotationalSpeedDPS);
       double newScaledXY = scaledXY
-          + (DRIVE_CONSTS.theoreticalMaxTranslationSpeed - configuredMaxTranslationalSpeed)
-              * percentXY * scalingCoefficient;
+          + (_conf._theoreticalMaxTranslationSpeedMPS - configuredMaxTranslationalSpeed) * percentXY
+              * scalingCoefficient;
       double newScaledR =
-          scaledR + (DRIVE_CONSTS.theoreticalMaxRotationalSpeed - configuredMaxRotationalSpeed);
+          scaledR + (_conf._theoreticalMaxRotationalSpeedDPS - configuredMaxRotationalSpeed);
       scaledX = scaledX * newScaledXY / scaledXY;
       scaledY = scaledY * newScaledXY / scaledXY;
       scaledR = newScaledR;
@@ -856,7 +875,10 @@ public class Drivetrain extends SubsystemBase {
 
   public void snapToAngleDrive(double translationXMPS, double translationYMPS) {
     snapToAngleDrive(
-        translationXMPS, translationYMPS, DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        translationXMPS,
+        translationYMPS,
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM()
+            .maxVelocity // TODO apply units
     );
   }
 
@@ -894,7 +916,8 @@ public class Drivetrain extends SubsystemBase {
         translationXMPS,
         translationYMPS,
         compositeXY,
-        DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM()
+            .maxVelocity // TODO apply units
     );
   }
 
@@ -920,7 +943,7 @@ public class Drivetrain extends SubsystemBase {
         translationXMPS,
         translationYMPS,
         rotationRadPS,
-        DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM().maxVelocity
     );
   }
 
@@ -932,7 +955,9 @@ public class Drivetrain extends SubsystemBase {
 
   public void resetDefaultTolerance() {
     setTolerance(
-        DRIVE_CONTROL.xy.toleranceM, DRIVE_CONTROL.xy.toleranceM, DRIVE_CONTROL.theta.tolerance
+        _conf.swerveConf.drivetrainControl.translationalTolerance.getLengthM(),
+        _conf.swerveConf.drivetrainControl.translationalTolerance.getLengthM(),
+        _conf.swerveConf.drivetrainControl.rotationalTolerance.getDistRotation()
     );
   }
 
@@ -955,7 +980,7 @@ public class Drivetrain extends SubsystemBase {
 
     // Desaturate based of max theoretical or functional rather than current max
     edu.wpi.first.math.kinematics.SwerveDriveKinematics.desaturateWheelSpeeds(
-        goalModuleStates, DRIVE_CONSTS.model.theoreticalMaxWheelSpeed
+        goalModuleStates, _conf._theoreticalMaxWheelSpeedMPS
     );
 
     for (SwerveModule module : _modules) {
@@ -993,7 +1018,9 @@ public class Drivetrain extends SubsystemBase {
   }
 
   public void chaseStaticTargetDrive() {
-    chaseStaticTargetDrive(DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS);
+    chaseStaticTargetDrive(
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM().maxVelocity
+    );
   }
 
   public void forceWheelChaseStaticTargetDrive(double maxSpeedMPS) {
@@ -1019,7 +1046,9 @@ public class Drivetrain extends SubsystemBase {
   }
 
   public void forceWheelChaseStaticTargetDrive() {
-    forceWheelChaseStaticTargetDrive(DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS);
+    forceWheelChaseStaticTargetDrive(
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM().maxVelocity
+    );
   }
 
   public void chaseDynamicTargetDrive(
@@ -1051,10 +1080,7 @@ public class Drivetrain extends SubsystemBase {
       Pose2d visionTarget, Pose2d relativeGoal, boolean targetMoved
   ) {
     chaseDynamicTargetDrive(
-        visionTarget,
-        relativeGoal,
-        targetMoved,
-        DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        visionTarget, relativeGoal, targetMoved, _conf._theoreticalMaxWheelSpeedMPS
     );
   }
 
@@ -1066,13 +1092,12 @@ public class Drivetrain extends SubsystemBase {
             translationXMPS, translationYMPS, rotationRadPS, getYaw()
         ));
 
-    for (int i = 0; i < DRIVE_CONSTS.numModules; i++)
-      _modules[i].setLastAngle(goalModuleStates[i].angle);
+    for (int i = 0; i < _conf._numModules; i++) _modules[i].setLastAngle(goalModuleStates[i].angle);
 
     if (areWheelsAligned(goalModuleStates)) {
       // Desaturate based of max theoretical or functional rather than current max
       edu.wpi.first.math.kinematics.SwerveDriveKinematics.desaturateWheelSpeeds(
-          goalModuleStates, DRIVE_CONSTS.model.theoreticalMaxWheelSpeed
+          goalModuleStates, _conf._theoreticalMaxWheelSpeedMPS
       );
 
       for (SwerveModule module : _modules) {
@@ -1093,10 +1118,7 @@ public class Drivetrain extends SubsystemBase {
       double translationXMPS, double translationYMPS, double rotationRadPS
   ) {
     forceWheelDirection(
-        translationXMPS,
-        translationYMPS,
-        rotationRadPS,
-        DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        translationXMPS, translationYMPS, rotationRadPS, _conf._theoreticalMaxWheelSpeedMPS
     );
   }
 
@@ -1120,7 +1142,9 @@ public class Drivetrain extends SubsystemBase {
 
   public void forceWheelDirectionDrive(double moduleAngleDeg, double speedMPS) {
     forceWheelDirectionDrive(
-        moduleAngleDeg, speedMPS, DRIVE_CONTROL.defaultLimits.maxTranslationalVelocityMPS
+        moduleAngleDeg,
+        speedMPS,
+        _conf.swerveConf.drivetrainControl.defaultLimits.translation.getLimitsM().maxVelocity
     );
   }
 
@@ -1183,7 +1207,7 @@ public class Drivetrain extends SubsystemBase {
     var goalModuleStates = _swerveKinematics.toSwerveModuleStates(
         ChassisSpeeds.fromFieldRelativeSpeeds(0, 0, 90, getYaw())
     );
-    for (int i = 0; i < DRIVE_CONSTS.numModules; i++) {
+    for (int i = 0; i < _conf._numModules; i++) {
       goalModuleStates[i].angle = goalModuleStates[i].angle.plus(Rotation2d.fromDegrees(90.0));
       _modules[i].setLastAngle(goalModuleStates[i]);
     }
@@ -1290,7 +1314,8 @@ public class Drivetrain extends SubsystemBase {
   public Command forceFieldRelativeMovementCommand(
       double blueXMPS, double blueYMPS, double redXMPS, double redyMPS, double timeout_s
   ) {
-    // run rather than Commands.run so this implicity requires the current subsystem (drivertrain)
+    // run rather than Commands.run so this implicity requires the current subsystem
+    // (drivertrain)
     return run(() -> {
              fieldRelativeDrive(
                  isRedAlliance() ? redXMPS : blueXMPS, isRedAlliance() ? redyMPS : blueYMPS, 0.0
@@ -1373,6 +1398,7 @@ public class Drivetrain extends SubsystemBase {
             _modulePositions[i] = _modules[i].getPosition(false);
           }
           // Assume Pigeon2 is flat-and-level so latency compensation can be performed
+          // TODO FIX THREAD SAFETY
           double yawDegrees =
               BaseStatusSignal.getLatencyCompensatedValue(_gyro.getYaw(), _angularZGetter);
 
@@ -1458,8 +1484,8 @@ public class Drivetrain extends SubsystemBase {
      * Sets the DAQ thread priority to a real time priority under the specified priority level
      *
      * @param priority Priority level to set the DAQ thread to.
-     *                 This is a value between 0 and 99, with 99 indicating higher priority and 0
-     * indicating lower priority.
+     *                 This is a value between 0 and 99, with 99 indicating higher priority and
+     * 0 indicating lower priority.
      */
     public void setThreadPriority(int priority) {
       kThreadPriority = priority;

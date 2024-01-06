@@ -2,6 +2,7 @@ package frc.robot.constants.enums;
 
 import edu.wpi.first.math.util.Units;
 import frc.robot.constants.Constants;
+import frc.robot.parsers.SwerveParser;
 import frc.robot.utils.UnitUtils;
 
 public enum FieldDims {
@@ -64,7 +65,4 @@ public enum FieldDims {
 
   public static final double GRID_HARD_STOPS_TO_COMMUNITY_ZONE =
       GRID_HARD_STOPS_TO_STAGING_MARK_M - STAGING_MARK_TO_COMMUNITY_ZONE_M;
-
-  public static final double BLUE_SCORING_X_M =
-      GRID_HARD_STOPS_LENGTH_M + Constants.CRobot.drive.dims.halfBumperLength_M;
 }

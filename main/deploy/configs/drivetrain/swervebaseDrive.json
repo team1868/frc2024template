@@ -1,0 +1,95 @@
+{
+    "moduleFiles": ["back_left/swervebaseBL.json", "back_right/swervebaseBR.json", "front_left/swervebaseFL.json", "front_right/swervebaseFR.json"],
+    "moduleControl":"swervebaseModules.json",
+    "dimensions": {
+        "trackWidthIn":  21.5,
+        "trackLengthIn": 21.5,
+        "frameWidthIn": 28.0,
+        "frameLengthIn": 28.0,
+        "bumperSegmentDepthIn": 3.25,
+        "halfFrameWidthIn": 14.0,
+        "halfFrameLengthIn": 14.0,
+        "bumperLengthIn": 34.5,
+        "bumperWidthIn": 34.5,
+        "halfBumperLengthIn": 17.25,
+        "halfBumperWidthIn": 17.25
+    },
+    "swerveControl": {
+        "translationalSlewingRate": {
+            "unit": "MPS",
+            "value": 15.0
+        },
+        "angularSlewingRate": {
+            "unit": "DPS",
+            "value": 900.0
+        },
+        "translationalTolerance": {
+            "unit": "In",
+            "value": 2.0
+        },
+        "rotationalTolerance": {
+            "unit": "Deg",
+            "value": 0.5
+        },
+
+        "defaultLimits": {
+            "translation": {
+                "unit": "MPS",
+                "velocity": 4.96824,
+                "acceleration": 15.0
+            },
+            "rotation": {
+                "unit": "DPS",
+                "velocity": 450.0,
+                "acceleration": 900.0
+            }
+        },
+        "defaultTrapezoidalLimits": {
+            "translation": { 
+                "unit": "MPS",
+                "velocity": 4.96824,
+                "acceleration": 3.0
+            },
+            "rotation": {
+                "unit": "DPS",
+                "velocity": 360.0,
+                "acceleration": 360.0
+            }
+        },
+        "PIDConstants": {
+            "translationalControl": {
+                "p": 10.0,
+                "i": 0.0,
+                "d": 0.2,
+                "f": 0.0
+            },
+            "rotationalControl": {
+                "p": 10.0,
+                "i": 0.0,
+                "d": 0.36,
+                "f": 0.0
+            },
+            "autoTranslationalControl": {
+                "p": 0.0,
+                "i": 0.0,
+                "d": 0.0,
+                "f": 0.0
+            },
+            "autoRotationalControl": {
+                "p": 0.0,
+                "i": 0.0,
+                "d": 0.0,
+                "f": 0.0
+            }
+        }
+    
+    },
+    "IMU": {
+        "pigeonCanBus":  "Canivore1",
+        "pigeonID": 35
+    },
+    // TODO FILE CONFIG
+    "driveCurrentLimits": {},
+    "steerCurrentLimits": {}
+    
+}

@@ -1,0 +1,27 @@
+{
+    "moduleType": "SDS_MK4i_L2",
+    "driveControl": {
+        "p": 0.10,
+        "i": 0.0,
+        "d": 0.0,
+        "f": 0.0
+    },
+    "steerControl": {
+        "p": 1.2,
+        "i": 0.0,
+        "d": 24.0,
+        "f": 0.0
+    },
+    "simDriveControl": {
+        "p": 0.10,
+        "i": 0.0,
+        "d": 0.0,
+        "f": 0.0
+    },
+    "simSteerControl": {
+        "p": 0.4,
+        "i": 0.0,
+        "d": 0.0,
+        "f": 0.0
+    }
+}

@@ -3,22 +3,21 @@ package frc.robot.constants;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
 import frc.robot.constants.enums.FieldVersions;
-import frc.robot.constants.enums.ModuleModels;
 
 public class Constants {
   public static final int NUM_SCORING_LOCATIONS = 9;
 
-  public static final RobotVersions CRobot = RobotVersions.COMP_BOT;
+  public static final RobotVersions CRobot = RobotVersions.SWERVE_BASE;
   public static final FieldVersions CField = FieldVersions.THEORETICAL_FIELD;
 
   // if we do our configurations right, this shouldn't be necessary
-  public static final boolean isCompBot = CRobot == RobotVersions.COMP_BOT;
-  public static final boolean isPracticeBot = CRobot == RobotVersions.PRACTICE_BOT;
-  public static final boolean isSwerveBase = CRobot == RobotVersions.SWERVE_BASE;
+  public static final boolean isCompBot = false; // CRobot == RobotVersions.COMP_BOT;
+  public static final boolean isPracticeBot = false; // CRobot == RobotVersions.PRACTICE_BOT;
+  public static final boolean isSwerveBase = false; // CRobot == RobotVersions.SWERVE_BASE;
 
   public static final boolean isNASAField = CField == FieldVersions.NASA_FIELD;
-  public static final boolean isSDSMK4 = CRobot.drive.type == ModuleModels.ModuleTypes.SDS_MK4;
-  public static final boolean isSDSMK4I = CRobot.drive.type == ModuleModels.ModuleTypes.SDS_MK4I;
+  // public static final boolean isSDSMK4 = CRobot.drive.type == ModuleModels.ModuleTypes.SDS_MK4;
+  // public static final boolean isSDSMK4I = CRobot.drive.type == ModuleModels.ModuleTypes.SDS_MK4I;
   public static final boolean isCANEncoder = CRobot == RobotVersions.SWERVE_BASE;
 
   // These are high level robot configurations that fundamentally change robot
@@ -75,8 +74,8 @@ public class Constants {
   public static final Rotation2d ANGLE_MAX_TRIM_SPEED_DPS = Rotation2d.fromDegrees(90.0);
 
   public static final class Control {
-    public static final double STICK_DEADBAND = 0.1; // TODO tune
-    public static final double STICK_NET_DEADBAND = 0.125; // TODO tune
+    public static final double STICK_DEADBAND = 0.1; // TODO: tune
+    public static final double STICK_NET_DEADBAND = 0.125; // TODO: tune
     public static final boolean IS_OPEN_LOOP = false; // swerve
   }
 }

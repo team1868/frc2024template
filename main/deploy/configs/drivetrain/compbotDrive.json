@@ -1,0 +1,92 @@
+{
+    "moduleFiles": ["back_left/compbotBL.json", "back_right/compbotBR.json", "front_left/compbotFL.json", "front_right/compbotFR.json"],
+    "moduleControl":"compbotModules.json",
+    "dimensions": {
+        "trackWidthIn": 20.75,
+        "trackLengthIn": 20.75,
+        "frameWidthIn": 26.0,
+        "frameLengthIn": 26.0,
+        "bumperSegmentDepthIn": 3.25,
+        "halfFrameWidthIn": 13.0,
+        "halfFrameLengthIn": 13.0,
+        "bumperLengthIn": 32.5,
+        "bumperWidthIn": 32.5 ,
+        "halfBumperLengthIn": 16.25,
+        "halfBumperWidthIn": 16.25
+    },
+    "swerveControl": {
+        "translationalSlewingRate": {
+            "unit": "MPS",
+            "value": 15.0
+        },
+        "angularSlewingRate": {
+            "unit": "DPS",
+            "value": 900.0
+        },
+        "translationalTolerance": {
+            "unit": "In",
+            "value": 0.5
+        },
+        "rotationalTolerance": { 
+            "unit": "Deg",
+            "value": 1.0
+        },
+
+        "defaultLimits": {
+            "translation": {
+                "units": "MPS",
+                "velocity": 4.96824,
+                "acceleration": 11.0
+            },
+            "rotation": {
+                "units": "DPS",
+                "velocity": 450.0,
+                "acceleration": 900.0
+            }
+        },
+        "defaultTrapezoidalLimits": {
+            "translation": {
+                "units": "MPS",
+                "velocity": 4.96824,
+                "acceleration": 3.0
+                
+            },
+            "rotation": {
+                "units": "DPS",
+                "velocity": 360.0,
+                "acceleration": 360.0
+            }
+        },
+
+        "translationalControl": {
+            "p": 3.0,
+            "i": 0.0,
+            "d": 0.0,
+            "f": 0.0
+        },
+        "rotationalControl": {
+            "p": 2.0,
+            "i": 0.0,
+            "d": 0.0,
+            "f": 0.0
+        },
+        "autoTranslationalControl": {
+            "p": 1.85,
+            "i": 0.0,
+            "d": 0.0,
+            "f": 0.0
+        },
+        "autoRotationalControl": {
+            "p": 1.75,
+            "i": 0.0,
+            "d": 0.0,
+            "f": 0.0
+        }
+    
+    },
+    "IMU": {
+        "pigeonCanBus":  "Default Name",
+        "pigeonID": 35
+    }
+
+}

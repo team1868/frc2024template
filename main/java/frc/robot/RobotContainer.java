@@ -14,6 +14,7 @@ import edu.wpi.first.util.datalog.DoubleLogEntry;
 import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import edu.wpi.first.wpilibj.shuffleboard.ShuffleboardTab;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
@@ -31,10 +32,11 @@ import frc.robot.constants.RobotVersions;
 import frc.robot.constants.enums.AutonomousAction;
 import frc.robot.constants.enums.AutonomousRoutines;
 import frc.robot.constants.enums.DriveModes;
-import frc.robot.constants.enums.DrivetrainControl;
 import frc.robot.constants.enums.LedColors;
+import frc.robot.parsers.SwerveParser;
 import frc.robot.subsystems.*;
 import frc.robot.utils.GeometricUtils;
+import frc.robot.utils.GyroIO;
 import frc.robot.utils.LoopTimer;
 import frc.robot.utils.PIDConstants;
 import java.util.Map;
@@ -45,7 +47,11 @@ public class RobotContainer {
 
   /* --- Subsystems --- */
   public Controlboard _controlboard = new Controlboard(_field);
-  public Drivetrain _drivetrain = new Drivetrain(_field);
+  public Drivetrain _drivetrain = new Drivetrain(
+      new SwerveParser(Filesystem.getDeployDirectory(), Constants.CRobot._drive),
+      _field,
+      new GyroIO() {}
+  );
 
   /* --- Commands --- */
   // Synchronization commands
@@ -80,7 +86,6 @@ public class RobotContainer {
   private AutonomousRoutines[] _autonModes;
 
   // Verbose mode
-  // private double[] _yawPitchRoll = new double[3];
   private double[] _curPoses = new double[4];
   private double[] _visionPoses = new double[4];
 
@@ -156,6 +161,7 @@ public class RobotContainer {
   public void robotInit() {
     configFMSData();
     DataLogManager.start();
+    DriverStation.startDataLog(DataLogManager.getLog());
     DataLogManager.logNetworkTables(false);
     if (RobotAltModes.isVerboseMode) {
       DriverStation.startDataLog(_log);

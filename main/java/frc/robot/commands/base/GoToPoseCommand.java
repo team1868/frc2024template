@@ -60,9 +60,9 @@ public class GoToPoseCommand extends Command {
     this(
         drivetrain,
         pose,
-        Constants.CRobot.drive.control.xy.toleranceM,
-        Constants.CRobot.drive.control.xy.toleranceM,
-        Constants.CRobot.drive.control.theta.tolerance
+        drivetrain._conf.swerveConf.drivetrainControl.translationalTolerance.getLengthM(),
+        drivetrain._conf.swerveConf.drivetrainControl.translationalTolerance.getLengthM(),
+        drivetrain._conf.swerveConf.drivetrainControl.rotationalTolerance.getDistRotation()
     );
   }
 

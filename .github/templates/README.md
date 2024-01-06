@@ -31,7 +31,6 @@ In Terminal/Command Prompt,
 - Push branch--if it is a new branch, the git push will fail and there will be a branch specific command to push the new branch to github
 
 
-
 This directory contains templates used in the `add-template-to-issue.yml` workflow
 
 Each template must have a filename of `label-<name of label>.md` to automatically be applied to a label of that name

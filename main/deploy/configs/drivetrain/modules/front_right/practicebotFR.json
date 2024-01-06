@@ -1,0 +1,21 @@
+{
+    "id": ,
+    "drive": {
+        "type": "falcon",
+        "id": 16,
+        "canbus": "Default Name"
+    },
+    "steer": {
+        "type": "falcon",
+        "id": 17,
+        "canbus": "Default Name"
+    },
+    "encoder": {
+        "type": "cancoder",
+        "id": 2,
+        "canbus": "Default Name"
+    },
+    "absoluteEncoderOffset": 208.98,
+    "halfTrackWidthIn": -10.375,
+    "halfTrackLengthIn": 10.375
+}

@@ -30,24 +30,32 @@ import edu.wpi.first.wpilibj.simulation.FlywheelSim;
 import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
 import frc.robot.Robot;
 import frc.robot.constants.Constants;
-import frc.robot.constants.DrivetrainConfs;
 import frc.robot.constants.RobotAltModes;
-import frc.robot.constants.enums.ModuleControl;
+import frc.robot.parsers.SwerveParser;
+import frc.robot.parsers.json.SwerveModuleControlJson;
+import frc.robot.parsers.utils.swerve.SwerveModuleJson;
+import frc.robot.parsers.utils.swerve.SwerveModuleTypeConfJson;
+import frc.robot.utils.ModuleIO;
+import frc.robot.utils.ModuleIOInputsAutoLogged;
 
 public class SwerveModule {
-  public static final DrivetrainConfs DRIVE_CONSTS = Constants.CRobot.drive;
+  // TODO CHANGE URGENT RYAN
+  public static final double alignmentToleranceDeg = 5.0;
 
   /* --- Module Identifiers --- */
   public final int _moduleNumber;
   public final String _moduleNumberStr;
 
   /* --- Sensors, motors, and hardware --- */
-  private final TalonFX _angleMotor;
+  private final TalonFX _steerMotor;
   private final TalonFX _driveMotor;
 
+  // Analog IO encoder
   private AnalogInput _analogInput;
-  private AnalogPotentiometer _angleEncoder;
-  private CANcoder _angleEncoderCAN;
+  private AnalogPotentiometer _steerEncoder;
+  // Cancoder (CAN based)
+  private CANcoder _steerCancoder;
+  private final CANcoderConfiguration _swerveCancoderConfig;
 
   /* --- State and Physical Property variables --- */
   private SwerveModuleState _desiredState;
@@ -59,23 +67,21 @@ public class SwerveModule {
   private double _velocity = 0.0;
   private double _angleDeg = 0.0;
   private double _absolutePosition;
-  private final String _canBusName;
 
   /* --- Control Utils --- */
-  private static CANcoderConfiguration _swerveCanCoderConfig;
   private static MotorOutputConfigs _driveStatorLimit;
   private static MotorOutputConfigs _autonomousDriveStatorLimit;
 
   // TODO: Move constants but not class into separate enum or configuration
   private final SimpleMotorFeedforward _feedforward = new SimpleMotorFeedforward(
-      ModuleControl.ElectricalConf.DRIVE_KS_VOLT,
-      ModuleControl.ElectricalConf.DRIVE_KV_VOLTPMPS,
-      ModuleControl.ElectricalConf.DRIVE_KA_VOLTPMPS_SQ
+      SwerveParser.ElectricalConf.DRIVE_KS_VOLT,
+      SwerveParser.ElectricalConf.DRIVE_KV_VOLTPMPS,
+      SwerveParser.ElectricalConf.DRIVE_KA_VOLTPMPS_SQ
   );
 
   /* --- Simulation resources and variables --- */
   private TalonFXSimState _driveMotorSim;
-  private TalonFXSimState _angleMotorSim;
+  private TalonFXSimState _steerMotorSim;
 
   private FlywheelSim _driveWheelSim;
 
@@ -103,22 +109,49 @@ public class SwerveModule {
   private final StatusSignal<Double> _steerCurrent;
   private final BaseStatusSignal[] _signals;
 
-  public SwerveModule(int moduleNumber, String canBusName) {
+  private final SwerveModuleJson _conf;
+  private final SwerveModuleTypeConfJson _type;
+  private final SwerveModuleControlJson _control;
+  private final ModuleIO _io;
+  private final ModuleIOInputsAutoLogged _inputs = new ModuleIOInputsAutoLogged();
+
+  // TODO fix
+  private final double _theoreticalMaxWheelSpeedMPS;
+
+  public SwerveModule(
+      int moduleNumber,
+      SwerveModuleJson moduleConf,
+      SwerveModuleTypeConfJson moduleType,
+      SwerveModuleControlJson moduleControl,
+      double theoreticalMaxWheelSpeedMPS,
+      ModuleIO io
+  ) {
     _moduleNumber = moduleNumber;
-    _canBusName = canBusName;
+    _conf = moduleConf;
+    _type = moduleType;
+    _control = moduleControl;
+    _io = io;
+
+    // TODO this needs cleanup
+    // Derived values
     _moduleNumberStr = "M" + Integer.toString(_moduleNumber);
-    _angleOffsetRotation = DRIVE_CONSTS.moduleOffsetsRotation[_moduleNumber];
-    initCanCoderConfigs();
+    _theoreticalMaxWheelSpeedMPS = theoreticalMaxWheelSpeedMPS;
 
-    _angleMotor = new TalonFX(DRIVE_CONSTS.ports.steer[_moduleNumber], canBusName);
-    _driveMotor = new TalonFX(DRIVE_CONSTS.ports.drive[_moduleNumber], canBusName);
+    // Convert configuration into core motors and sensors
+    _angleOffsetRotation = _conf.getEncoderOffset();
+    _driveMotor = _conf.drive.getTalonFX();
+    _steerMotor = _conf.steer.getTalonFX();
 
+    // Get this config regardless of the type of encoder (being lazy)
+    _swerveCancoderConfig = getCancoderConfig();
+
+    // TODO: replace with subsystem disablement control
     waitForCAN();
 
     // Must be done before the angle motor is configured
     configAngleEncoder();
 
-    configAngleMotor();
+    configSteerMotor();
 
     configDriveMotor();
 
@@ -134,10 +167,10 @@ public class SwerveModule {
     _driveAppliedVolts = _driveMotor.getMotorVoltage();
     _driveCurrent = _driveMotor.getStatorCurrent();
 
-    _steerPosition = _angleMotor.getPosition().clone();
-    _steerVelocity = _angleMotor.getVelocity().clone();
-    _steerAppliedVolts = _angleMotor.getMotorVoltage();
-    _steerCurrent = _angleMotor.getStatorCurrent();
+    _steerPosition = _steerMotor.getPosition().clone();
+    _steerVelocity = _steerMotor.getVelocity().clone();
+    _steerAppliedVolts = _steerMotor.getMotorVoltage();
+    _steerCurrent = _steerMotor.getStatorCurrent();
 
     _signals = new BaseStatusSignal[4];
     _signals[0] = _drivePosition;
@@ -150,12 +183,8 @@ public class SwerveModule {
     return _signals;
   }
 
-  public SwerveModule(int moduleNumber) {
-    this(moduleNumber, "");
-  }
-
   public void setDesiredState(SwerveModuleState desiredState, boolean isOpenLoop) {
-    if (_angleMotor.hasResetOccurred()) {
+    if (_steerMotor.hasResetOccurred()) {
       resetToAbsolute();
     }
 
@@ -163,14 +192,13 @@ public class SwerveModule {
     _desiredState = optimize(desiredState, getState().angle);
 
     if (isOpenLoop) {
-      _percentOutput = _desiredState.speedMetersPerSecond
-          / Constants.CRobot.drive.model.theoreticalMaxWheelSpeed;
+      _percentOutput = _desiredState.speedMetersPerSecond / _theoreticalMaxWheelSpeedMPS;
       _driveMotor.set(_percentOutput);
     } else {
       _velocity = MPSToRotorRPS(
           _desiredState.speedMetersPerSecond,
-          DRIVE_CONSTS.type.wheelCircumferenceM,
-          DRIVE_CONSTS.model.driveRatio
+          _type._wheelCircumferenceM,
+          _type._calculatedDriveRatio
       );
       _driveMotor.setControl(new VelocityVoltage(
           _velocity,
@@ -184,12 +212,16 @@ public class SwerveModule {
       ));
     }
 
-    _angleDeg = Math.abs(_desiredState.speedMetersPerSecond)
-            <= (DRIVE_CONSTS.model.theoreticalMaxWheelSpeed * 0.01)
+    _angleDeg =
+        Math.abs(_desiredState.speedMetersPerSecond) <= (_theoreticalMaxWheelSpeedMPS * 0.01)
         ? _lastAngleDeg
         : _desiredState.angle.getDegrees();
-    _angleMotor.setControl(new PositionVoltage(_angleDeg * DRIVE_CONSTS.model.steerRatio / 360.0));
+    _steerMotor.setControl(new PositionVoltage(_angleDeg * _type._calculatedSteerRatio / 360.0));
     _lastAngleDeg = _angleDeg;
+  }
+
+  public void updateInputs() {
+    _io.updateInputs(_inputs);
   }
 
   public double getDegreeAngleEncoder() {
@@ -198,9 +230,9 @@ public class SwerveModule {
 
   public double getRotationAngleEncoder() {
     if (Constants.isCANEncoder) {
-      return _angleEncoderCAN.getAbsolutePosition().getValue();
+      return _steerCancoder.getAbsolutePosition().getValue();
     }
-    return _angleEncoder.get() + _angleOffsetRotation;
+    return _steerEncoder.get() + _angleOffsetRotation;
   }
 
   public static double MPSToRotorRPS(double velocityMPS, double circumferenceM, double gearRatio) {
@@ -213,11 +245,11 @@ public class SwerveModule {
   public SwerveModuleState getState() {
     _curState.speedMetersPerSecond = RotorRPSToMPS(
         _driveMotor.getVelocity().getValue(),
-        DRIVE_CONSTS.type.wheelCircumferenceM,
-        DRIVE_CONSTS.model.driveRatio
+        _type._wheelCircumferenceM,
+        _type._calculatedDriveRatio
     );
     _curState.angle = Rotation2d.fromRotations(
-        _angleMotor.getRotorPosition().getValue() / DRIVE_CONSTS.model.steerRatio
+        _steerMotor.getRotorPosition().getValue() / _type._calculatedSteerRatio
     );
 
     return _curState;
@@ -225,9 +257,9 @@ public class SwerveModule {
 
   public SwerveModulePosition getPosition() {
     _curPosition.distanceMeters = _driveMotor.getRotorPosition().getValueAsDouble()
-        * DRIVE_CONSTS.type.wheelCircumferenceM / DRIVE_CONSTS.model.driveRatio;
+        * _type._wheelCircumferenceM / _type._calculatedDriveRatio;
     _curPosition.angle = Rotation2d.fromRotations(
-        _angleMotor.getRotorPosition().getValueAsDouble() / DRIVE_CONSTS.model.steerRatio
+        _steerMotor.getRotorPosition().getValueAsDouble() / _type._calculatedSteerRatio
     );
 
     return _curPosition;
@@ -244,24 +276,24 @@ public class SwerveModule {
 
     /* Now latency-compensate our signals */
     double drive_rot = BaseStatusSignal.getLatencyCompensatedValue(_drivePosition, _driveVelocity);
-    double angle_rot = BaseStatusSignal.getLatencyCompensatedValue(_steerPosition, _steerVelocity);
+    double steer_rot = BaseStatusSignal.getLatencyCompensatedValue(_steerPosition, _steerVelocity);
 
     /*
      * Back out the drive rotations based on angle rotations due to coupling between
      * azimuth and steer
      */
-    drive_rot -= angle_rot * RobotAltModes.steerDriveCouplingRatio;
+    drive_rot -= steer_rot * RobotAltModes.steerDriveCouplingRatio;
 
     /* And push them into a SwerveModulePosition object to return */
     _curPosition.distanceMeters =
-        drive_rot * DRIVE_CONSTS.type.wheelCircumferenceM / DRIVE_CONSTS.model.driveRatio;
+        drive_rot * _type._wheelCircumferenceM / _type._calculatedDriveRatio;
     // _curPosition.distanceMeters = drive_rot / _driveRotationsPerMeter;
 
     // TODO check
     /* Angle is already in terms of steer rotations */
-    _curPosition.angle = Rotation2d.fromRotations(angle_rot / DRIVE_CONSTS.model.steerRatio);
+    _curPosition.angle = Rotation2d.fromRotations(steer_rot / _type._calculatedSteerRatio);
     // only if fused
-    // _curPosition.angle = Rotation2d.fromRotations(angle_rot);
+    // _curPosition.angle = Rotation2d.fromRotations(steer_rot);
 
     return _curPosition;
   }
@@ -278,11 +310,10 @@ public class SwerveModule {
   }
 
   public void resetToAbsolute() {
-    double rotation =
-        (Constants.CRobot.drive.model.type.invertSteer ? 1.0 : -1.0) * getRotationAngleEncoder();
+    double rotation = (_type.invertSteer ? 1.0 : -1.0) * getRotationAngleEncoder();
     _lastAngleDeg = rotation * 360.0;
-    _absolutePosition = rotation * DRIVE_CONSTS.model.steerRatio;
-    _angleMotor.setPosition(_absolutePosition);
+    _absolutePosition = rotation * _type._calculatedSteerRatio;
+    _steerMotor.setPosition(_absolutePosition);
   }
 
   public void configShuffleboard() {
@@ -313,12 +344,12 @@ public class SwerveModule {
 
   public boolean motorResetConfig() {
     boolean result = false;
-    if (Constants.isCANEncoder && _angleEncoderCAN.hasResetOccurred()) {
+    if (Constants.isCANEncoder && _steerCancoder.hasResetOccurred()) {
       configCanEncoder();
       result = true;
     }
-    if (_angleMotor.hasResetOccurred()) {
-      configAngleMotor();
+    if (_steerMotor.hasResetOccurred()) {
+      configSteerMotor();
       result = true;
     }
     if (_driveMotor.hasResetOccurred()) {
@@ -330,16 +361,16 @@ public class SwerveModule {
 
   public void configPID(double ap, double ai, double ad, double p, double i, double d) {
     if (RobotAltModes.isPIDTuningMode) {
-      Constants.CRobot.drive.moduleControl.steerConf.Slot0.kP = ap;
-      Constants.CRobot.drive.moduleControl.steerConf.Slot0.kI = ai;
-      Constants.CRobot.drive.moduleControl.steerConf.Slot0.kD = ad;
+      _control.getSteerConfiguration().Slot0.kP = ap;
+      _control.getSteerConfiguration().Slot0.kI = ai;
+      _control.getSteerConfiguration().Slot0.kD = ad;
 
-      Constants.CRobot.drive.moduleControl.driveConf.Slot0.kP = p;
-      Constants.CRobot.drive.moduleControl.driveConf.Slot0.kI = i;
-      Constants.CRobot.drive.moduleControl.driveConf.Slot0.kD = d;
+      _control.getDriveConfiguration().Slot0.kP = p;
+      _control.getDriveConfiguration().Slot0.kI = i;
+      _control.getDriveConfiguration().Slot0.kD = d;
 
-      _angleMotor.getConfigurator().apply(Constants.CRobot.drive.moduleControl.steerConf.Slot0);
-      _driveMotor.getConfigurator().apply(Constants.CRobot.drive.moduleControl.driveConf.Slot0);
+      _steerMotor.getConfigurator().apply(_control.getSteerConfiguration().Slot0);
+      _driveMotor.getConfigurator().apply(_control.getDriveConfiguration().Slot0);
     }
   }
 
@@ -361,13 +392,13 @@ public class SwerveModule {
   }
 
   public boolean isAlignedTo(SwerveModuleState goalState) {
-    return isAlignedTo(goalState, DRIVE_CONSTS.alignmentToleranceDeg);
+    return isAlignedTo(goalState, alignmentToleranceDeg);
   }
 
   public void autonomousDriveMode(boolean enable) {
     _driveMotor.getConfigurator().apply(
-        enable ? ModuleControl.ElectricalConf.AUTO_DRIVE_CURRENT_LIMITS_CONFIGS
-               : ModuleControl.ElectricalConf.DRIVE_CURRENT_LIMITS_CONFIGS
+        enable ? SwerveParser.ElectricalConf.AUTO_DRIVE_CURRENT_LIMITS_CONFIGS
+               : SwerveParser.ElectricalConf.DRIVE_CURRENT_LIMITS_CONFIGS
     );
   }
 
@@ -381,57 +412,57 @@ public class SwerveModule {
   }
 
   private void initCanEncoder() {
-    _angleEncoderCAN = new CANcoder(DRIVE_CONSTS.ports.encoder[_moduleNumber], _canBusName);
+    _steerCancoder = _conf.encoder.getCancoder();
   }
 
   private void configCanEncoder() {
-    _swerveCanCoderConfig.MagnetSensor.MagnetOffset = _angleOffsetRotation;
-    _angleEncoderCAN.getConfigurator().apply(_swerveCanCoderConfig);
+    _swerveCancoderConfig.MagnetSensor.MagnetOffset = _angleOffsetRotation;
+    _steerCancoder.getConfigurator().apply(_swerveCancoderConfig);
   }
 
   private void configAnalogEncoder() {
-    _analogInput = new AnalogInput(DRIVE_CONSTS.ports.encoder[_moduleNumber]);
-    _angleEncoder = new AnalogPotentiometer(_analogInput, 1.0);
+    _analogInput = new AnalogInput(_conf.encoder.id);
+    _steerEncoder = new AnalogPotentiometer(_analogInput, 1.0);
     _analogInput.setAverageBits(2);
   }
 
-  private void configAngleMotor() {
-    // _angleMotor.configFactoryDefault();
-    _angleMotor.getConfigurator().apply(Constants.CRobot.drive.moduleControl.steerConf);
-    _angleMotor.setInverted(Constants.CRobot.drive.model.type.invertSteer);
-    _angleMotor.setNeutralMode(ModuleControl.STEER_NEUTRAL_MODE);
+  private void configSteerMotor() {
+    // _steerMotor.configFactoryDefault();
+    _steerMotor.getConfigurator().apply(_control.getSteerConfiguration());
+    _steerMotor.setInverted(_type.invertSteer);
+    _steerMotor.setNeutralMode(SwerveParser.STEER_NEUTRAL_MODE);
 
     resetToAbsolute();
   }
 
   private void configDriveMotor() {
     // _driveMotor.configFactoryDefault();
-    _driveMotor.getConfigurator().apply(Constants.CRobot.drive.moduleControl.driveConf);
-    _driveMotor.setInverted(Constants.CRobot.drive.model.type.invertDrive);
-    _driveMotor.setNeutralMode(ModuleControl.DRIVE_NEUTRAL_MODE);
+    _driveMotor.getConfigurator().apply(_control.getDriveConfiguration());
+    _driveMotor.setInverted(_type.invertDrive);
+    _driveMotor.setNeutralMode(SwerveParser.DRIVE_NEUTRAL_MODE);
     _driveMotor.setPosition(0);
   }
 
   private boolean checkInitStatus() {
-    // return _angleMotor.configFactoryDefault() == ErrorCode.OK;
+    // return _steerMotor.configFactoryDefault() == ErrorCode.OK;
     return true;
   }
 
   public void simulationInit() {
     if (!Robot.isReal())
       _driveMotorSim = _driveMotor.getSimState();
-    _angleMotorSim = _angleMotor.getSimState();
+    _steerMotorSim = _steerMotor.getSimState();
 
     _driveWheelSim = new FlywheelSim(
         DCMotor.getFalcon500(1),
-        DRIVE_CONSTS.model.driveRatio,
+        _type._calculatedDriveRatio,
         0.01,
         VecBuilder.fill(2.0 * Math.PI / 2048)
     );
 
     _moduleAngleSim = new SingleJointedArmSim(
         DCMotor.getFalcon500(1),
-        DRIVE_CONSTS.model.steerRatio,
+        _type._calculatedSteerRatio,
         0.001,
         0.0,
         -Double.MAX_VALUE,
@@ -450,7 +481,7 @@ public class SwerveModule {
 
       double driveSimOmega = _driveWheelSim.getAngularVelocityRPM();
       double driveTicksPerS =
-          (_driveMotor.getInverted() ? -1 : 1) * driveSimOmega * DRIVE_CONSTS.model.driveRatio / 60;
+          (_driveMotor.getInverted() ? -1 : 1) * driveSimOmega * _type._calculatedDriveRatio / 60;
 
       // Update integrated sensor sim in _driveMotor
       _driveMotorSim.setRotorVelocity(driveTicksPerS);
@@ -459,32 +490,31 @@ public class SwerveModule {
       );
 
       // Update _steeringSim single-arm simulation
-      _moduleAngleSim.setInputVoltage(_angleMotor.get() * RobotController.getBatteryVoltage());
+      _moduleAngleSim.setInputVoltage(_steerMotor.get() * RobotController.getBatteryVoltage());
       _moduleAngleSim.update(Constants.LOOP_PERIOD_MS);
 
-      // Update integratedSensor sim in _angleMotor
-      double angleSign = _angleMotor.getInverted() ? -1 : 1;
-      _angleMotorSim.setRawRotorPosition(
+      // Update integratedSensor sim in _steerMotor
+      double angleSign = _steerMotor.getInverted() ? -1 : 1;
+      _steerMotorSim.setRawRotorPosition(
           angleSign
-          * (_moduleAngleSim.getVelocityRadPerSec() * Constants.CTREConstants.RPM_TO_FALCON
-             * DRIVE_CONSTS.model.steerRatio / (2 * Math.PI))
+          * (_moduleAngleSim.getVelocityRadPerSec() * _type._calculatedSteerRatio / (2 * Math.PI))
       );
 
-      _angleMotorSim.setRawRotorPosition(
-          angleSign * _moduleAngleSim.getAngleRads() * DRIVE_CONSTS.model.steerRatio / 60.0
+      _steerMotorSim.setRawRotorPosition(
+          angleSign * _moduleAngleSim.getAngleRads() * _type._calculatedSteerRatio / 60.0
       );
     }
   }
 
-  private void initCanCoderConfigs() {
-    if (Constants.isCANEncoder && _swerveCanCoderConfig == null) {
-      /* Swerve CANCoder Configuration */
-      _swerveCanCoderConfig = new CANcoderConfiguration();
-      _swerveCanCoderConfig.MagnetSensor.AbsoluteSensorRange =
-          AbsoluteSensorRangeValue.Unsigned_0To1;
-      _swerveCanCoderConfig.MagnetSensor.MagnetOffset = _angleOffsetRotation;
-      _swerveCanCoderConfig.MagnetSensor.SensorDirection = SensorDirectionValue.Clockwise_Positive;
-    }
+  private CANcoderConfiguration getCancoderConfig() {
+    /* Swerve CANCoder Configuration */
+    CANcoderConfiguration conf = new CANcoderConfiguration();
+    _swerveCancoderConfig.MagnetSensor.AbsoluteSensorRange = AbsoluteSensorRangeValue.Unsigned_0To1;
+    // avoid a small race for when the offset variable is set
+    _swerveCancoderConfig.MagnetSensor.MagnetOffset = _conf.getEncoderOffset();
+    _swerveCancoderConfig.MagnetSensor.SensorDirection = SensorDirectionValue.Clockwise_Positive;
+
+    return conf;
   }
 
   public static SwerveModuleState optimize254(
